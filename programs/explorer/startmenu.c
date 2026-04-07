@@ -421,13 +421,16 @@ static void destroy_menus(void)
         free( item );
     }
 
+}
+
+void cleanup_startmenu(void)
+{
+    unsigned int i;
+    destroy_menus();
+    for (i = 0; i < ARRAY_SIZE(wine_program_bitmaps); i++)
     {
-        unsigned int i;
-        for (i = 0; i < ARRAY_SIZE(wine_program_bitmaps); i++)
-        {
-            if (wine_program_bitmaps[i]) DeleteObject( wine_program_bitmaps[i] );
-            wine_program_bitmaps[i] = NULL;
-        }
+        if (wine_program_bitmaps[i]) DeleteObject( wine_program_bitmaps[i] );
+        wine_program_bitmaps[i] = NULL;
     }
 }
 
@@ -559,12 +562,11 @@ void do_startmenu(HWND hwnd)
     if (!public_startmenu.folder)
         pidl_to_shellfolder(public_startmenu.pidl, NULL, &public_startmenu.folder);
 
-    if ((user_startmenu.folder && !shell_folder_is_empty(user_startmenu.folder)) ||
-        (public_startmenu.folder && !shell_folder_is_empty(public_startmenu.folder)))
     {
+        int items_before = GetMenuItemCount(root_menu.menuhandle);
         fill_menu(&user_startmenu);
-
-        AppendMenuW(root_menu.menuhandle, MF_SEPARATOR, 0, NULL);
+        if (GetMenuItemCount(root_menu.menuhandle) > items_before)
+            AppendMenuW(root_menu.menuhandle, MF_SEPARATOR, 0, NULL);
     }
 
     if (SUCCEEDED(SHGetSpecialFolderLocation(NULL, CSIDL_CONTROLS, &pidl)))
@@ -587,15 +589,18 @@ void do_startmenu(HWND hwnd)
             }
             else
             {
-                SHFILEINFOW fi = {0};
-                WCHAR exe_path[MAX_PATH];
-                GetSystemDirectoryW( exe_path, MAX_PATH );
-                PathAppendW( exe_path, wine_programs[i].exe );
-                if (SHGetFileInfoW( exe_path, 0, &fi, sizeof(fi),
-                                    SHGFI_ICON | SHGFI_SMALLICON ) && fi.hIcon)
+                if (!wine_program_bitmaps[i])
                 {
-                    wine_program_bitmaps[i] = create_menu_bitmap( fi.hIcon );
-                    DestroyIcon( fi.hIcon );
+                    SHFILEINFOW fi = {0};
+                    WCHAR exe_path[MAX_PATH];
+                    GetSystemDirectoryW( exe_path, MAX_PATH );
+                    PathAppendW( exe_path, wine_programs[i].exe );
+                    if (SHGetFileInfoW( exe_path, 0, &fi, sizeof(fi),
+                                        SHGFI_ICON | SHGFI_SMALLICON ) && fi.hIcon)
+                    {
+                        wine_program_bitmaps[i] = create_menu_bitmap( fi.hIcon );
+                        DestroyIcon( fi.hIcon );
+                    }
                 }
                 mii.fMask = MIIM_STRING | MIIM_ID | MIIM_BITMAP;
                 mii.dwTypeData = (WCHAR *)wine_programs[i].name;

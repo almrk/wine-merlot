@@ -135,6 +135,7 @@ static POINT balloon_pos;
 #define BUTTON_BOT_INSET   6
 #define TRAY_MARGIN        2  /* outer gap from taskbar edge */
 #define SUNKEN_BORDER      2  /* EDGE_SUNKEN border thickness */
+#define START_SEPARATOR_WIDTH 5  /* gap between start button and task list, including 2px etched line */
 
 #define BALLOON_CREATE_TIMEOUT   2000
 #define BALLOON_SHOW_MIN_TIMEOUT 10000
@@ -837,7 +838,7 @@ static void sync_taskbar_buttons(void)
         {
             SetWindowPos( win->button, 0, pos, BUTTON_TOP_INSET, start_button_width, tray_height - BUTTON_BOT_INSET,
                           SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW );
-            pos += start_button_width;
+            pos += start_button_width + START_SEPARATOR_WIDTH;
             continue;
         }
         win->active = (win->hwnd == foreground);
@@ -1145,9 +1146,16 @@ static LRESULT WINAPI shell_traywnd_proc( HWND hwnd, UINT msg, WPARAM wparam, LP
         DrawEdge( hdc, &rect, EDGE_RAISED, BF_TOP );
         if (enable_taskbar)
         {
-            RECT tray_rect, clock_rect;
+            RECT tray_rect, clock_rect, sep_rect;
             WCHAR time_str[32];
             SYSTEMTIME st;
+
+            /* vertical separator between start button and task list */
+            sep_rect.left   = start_button_width + 2;
+            sep_rect.right  = start_button_width + 4;
+            sep_rect.top    = BUTTON_TOP_INSET + 2;
+            sep_rect.bottom = tray_height - TRAY_MARGIN - 2;
+            DrawEdge( hdc, &sep_rect, EDGE_ETCHED, BF_LEFT );
 
             tray_rect.right  = tray_width - TRAY_MARGIN;
             tray_rect.left   = tray_width - nb_displayed * icon_cx - clock_width - TRAY_MARGIN - SUNKEN_BORDER;
