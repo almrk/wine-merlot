@@ -130,7 +130,7 @@ static POINT balloon_pos;
 #define CLOCK_TIMER          3
 
 #define MIN_TRAY_HEIGHT   28
-#define CLOCK_PADDING      8
+#define CLOCK_PADDING     32
 #define BUTTON_TOP_INSET   4
 #define BUTTON_BOT_INSET   6
 #define TRAY_MARGIN        2  /* outer gap from taskbar edge */
