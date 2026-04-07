@@ -1106,7 +1106,7 @@ static void do_show_systray(void)
     taskbar_button_width = size.cx;
     GetTextExtentPointW( hdc, start_label, lstrlenW(start_label), &size );
     /* add some margins (FIXME) */
-    size.cx += 12 + GetSystemMetrics( SM_CXSMICON );
+    size.cx += 8 + GetSystemMetrics( SM_CXSMICON );
     size.cy += 4;
     start_button_width = size.cx;
 
