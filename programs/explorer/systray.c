@@ -1019,7 +1019,8 @@ static void paint_taskbar_button( const DRAWITEMSTRUCT *dis )
                       (((win->hwnd && win->active) || (dis->itemState & ODS_SELECTED)) ? DFCS_PUSHED : 0 ));
     if (win->hwnd)
     {
-        DrawCaptionTempW( win->hwnd, dis->hDC, &rect, 0, 0, NULL, flags | DC_INBUTTON );
+        HFONT font = win->active ? 0 : GetStockObject( DEFAULT_GUI_FONT );
+        DrawCaptionTempW( win->hwnd, dis->hDC, &rect, font, 0, NULL, flags | DC_INBUTTON );
     }
     else  /* start button */
         DrawCaptionTempW( 0, dis->hDC, &rect, 0, 0, start_label, flags | DC_INBUTTON | DC_ICON );
