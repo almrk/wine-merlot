@@ -806,7 +806,8 @@ static LRESULT WINAPI desktop_wnd_proc( HWND hwnd, UINT message, WPARAM wp, LPAR
         break;
 
     case WM_CLOSE:
-        PostQuitMessage(0);
+        /* Swallow WM_CLOSE — Wine sends this when the last app window closes,
+           but the desktop should keep running. Exit via the start menu instead. */
         return 0;
 
     case WM_SETCURSOR:
