@@ -34,6 +34,7 @@ struct menu_item
 {
     struct list entry;
     LPWSTR displayname;
+    HBITMAP bitmap;
 
     /* parent information */
     struct menu_item* parent;
@@ -54,6 +55,25 @@ static struct menu_item user_startmenu;
 
 #define MENU_ID_RUN 1
 #define MENU_ID_EXIT 2
+#define MENU_ID_WINE_BASE 100
+
+static const struct wine_builtin_program
+{
+    const WCHAR *name;
+    const WCHAR *exe;
+} wine_programs[] =
+{
+    { L"Notepad",            L"notepad.exe" },
+    { L"WordPad",            L"wordpad.exe" },
+    { L"Minesweeper",        L"winemine.exe" },
+    { NULL, NULL }, /* separator */
+    { L"Registry Editor",    L"regedit.exe" },
+    { L"Task Manager",       L"taskmgr.exe" },
+    { L"Wine Configuration", L"winecfg.exe" },
+    { L"Wine File Manager",  L"winefile.exe" },
+    { L"Uninstall Programs", L"uninstaller.exe" },
+    { L"Command Prompt",     L"cmd.exe" },
+};
 
 static ULONG copy_pidls(struct menu_item* item, LPITEMIDLIST dest)
 {
@@ -176,6 +196,37 @@ static BOOL shell_folder_is_empty(IShellFolder* folder)
     return TRUE;
 }
 
+static HBITMAP wine_program_bitmaps[ARRAY_SIZE(wine_programs)];
+
+#define MENU_ICON_PADDING 6
+
+static HBITMAP create_menu_bitmap( HICON icon )
+{
+    HDC screen_dc, mem_dc;
+    HBITMAP bitmap, old_bitmap;
+    int size = GetSystemMetrics( SM_CXSMICON );
+    int width = size + MENU_ICON_PADDING;
+    RECT rect;
+
+    if (!icon) return NULL;
+
+    screen_dc = GetDC( NULL );
+    mem_dc = CreateCompatibleDC( screen_dc );
+    bitmap = CreateCompatibleBitmap( screen_dc, width, size );
+    ReleaseDC( NULL, screen_dc );
+
+    if (!bitmap) { DeleteDC( mem_dc ); return NULL; }
+
+    old_bitmap = SelectObject( mem_dc, bitmap );
+    SetRect( &rect, 0, 0, width, size );
+    FillRect( mem_dc, &rect, (HBRUSH)(COLOR_MENU + 1) );
+    DrawIconEx( mem_dc, 0, 0, icon, size, size, 0, (HBRUSH)(COLOR_MENU + 1), DI_NORMAL );
+    SelectObject( mem_dc, old_bitmap );
+    DeleteDC( mem_dc );
+
+    return bitmap;
+}
+
 /* add an individual file or folder to the menu, takes ownership of pidl */
 static struct menu_item* add_shell_item(struct menu_item* parent, LPITEMIDLIST pidl)
 {
@@ -220,6 +271,18 @@ static struct menu_item* add_shell_item(struct menu_item* parent, LPITEMIDLIST p
     item->parent = parent;
     item->pidl = pidl;
 
+    {
+        SHFILEINFOW fi = {0};
+        LPITEMIDLIST abs_pidl = build_pidl( item );
+        if (SHGetFileInfoW( (WCHAR *)abs_pidl, 0, &fi, sizeof(fi),
+                            SHGFI_PIDL | SHGFI_ICON | SHGFI_SMALLICON ) && fi.hIcon)
+        {
+            item->bitmap = create_menu_bitmap( fi.hIcon );
+            DestroyIcon( fi.hIcon );
+        }
+        CoTaskMemFree( abs_pidl );
+    }
+
     existing_item_count = GetMenuItemCount(parent_menu);
     mii.cbSize = sizeof(mii);
     mii.fMask = MIIM_SUBMENU|MIIM_DATA;
@@ -263,9 +326,10 @@ static struct menu_item* add_shell_item(struct menu_item* parent, LPITEMIDLIST p
     if (!match)
     {
         /* no existing item with the same name; just add it */
-        mii.fMask = MIIM_STRING|MIIM_DATA;
+        mii.fMask = MIIM_STRING|MIIM_DATA|MIIM_BITMAP;
         mii.dwTypeData = item->displayname;
         mii.dwItemData = (ULONG_PTR)item;
+        mii.hbmpItem = item->bitmap;
 
         if (item->folder)
         {
@@ -347,11 +411,23 @@ static void destroy_menus(void)
         if (item->folder)
             IShellFolder_Release(item->folder);
 
+        if (item->bitmap)
+            DeleteObject(item->bitmap);
+
         CoTaskMemFree(item->pidl);
         CoTaskMemFree(item->displayname);
 
         list_remove(&item->entry);
         free( item );
+    }
+
+    {
+        unsigned int i;
+        for (i = 0; i < ARRAY_SIZE(wine_program_bitmaps); i++)
+        {
+            if (wine_program_bitmaps[i]) DeleteObject( wine_program_bitmaps[i] );
+            wine_program_bitmaps[i] = NULL;
+        }
     }
 }
 
@@ -433,6 +509,11 @@ LRESULT menu_wndproc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam)
                 run_dialog();
             else if (mii.wID == MENU_ID_EXIT)
                 shut_down(hwnd);
+            else if (mii.wID >= MENU_ID_WINE_BASE &&
+                     mii.wID < MENU_ID_WINE_BASE + (int)ARRAY_SIZE(wine_programs) &&
+                     wine_programs[mii.wID - MENU_ID_WINE_BASE].exe)
+                ShellExecuteW(NULL, L"open", wine_programs[mii.wID - MENU_ID_WINE_BASE].exe,
+                              NULL, NULL, SW_SHOWNORMAL);
 
             destroy_menus();
 
@@ -488,6 +569,47 @@ void do_startmenu(HWND hwnd)
 
     if (SUCCEEDED(SHGetSpecialFolderLocation(NULL, CSIDL_CONTROLS, &pidl)))
         add_shell_item(&root_menu, pidl);
+
+    {
+        HMENU wine_menu = CreatePopupMenu();
+        MENUINFO wmi = { .cbSize = sizeof(wmi), .fMask = MIM_STYLE, .dwStyle = MNS_NOTIFYBYPOS };
+        unsigned int i;
+
+        mii.cbSize = sizeof(mii);
+        SetMenuInfo(wine_menu, &wmi);
+
+        for (i = 0; i < ARRAY_SIZE(wine_programs); i++)
+        {
+            if (!wine_programs[i].name)
+            {
+                mii.fMask = MIIM_FTYPE;
+                mii.fType = MFT_SEPARATOR;
+            }
+            else
+            {
+                SHFILEINFOW fi = {0};
+                WCHAR exe_path[MAX_PATH];
+                GetSystemDirectoryW( exe_path, MAX_PATH );
+                PathAppendW( exe_path, wine_programs[i].exe );
+                if (SHGetFileInfoW( exe_path, 0, &fi, sizeof(fi),
+                                    SHGFI_ICON | SHGFI_SMALLICON ) && fi.hIcon)
+                {
+                    wine_program_bitmaps[i] = create_menu_bitmap( fi.hIcon );
+                    DestroyIcon( fi.hIcon );
+                }
+                mii.fMask = MIIM_STRING | MIIM_ID | MIIM_BITMAP;
+                mii.dwTypeData = (WCHAR *)wine_programs[i].name;
+                mii.wID = MENU_ID_WINE_BASE + i;
+                mii.hbmpItem = wine_program_bitmaps[i];
+            }
+            InsertMenuItemW(wine_menu, i, TRUE, &mii);
+        }
+
+        mii.fMask = MIIM_STRING | MIIM_SUBMENU;
+        mii.dwTypeData = (WCHAR *)L"Wine";
+        mii.hSubMenu = wine_menu;
+        InsertMenuItemW(root_menu.menuhandle, GetMenuItemCount(root_menu.menuhandle), TRUE, &mii);
+    }
 
     LoadStringW(NULL, IDS_RUN, label, ARRAY_SIZE(label));
     mii.cbSize = sizeof(mii);

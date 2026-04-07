@@ -619,7 +619,7 @@ static void systray_add_icon( struct icon *icon )
     SetWindowPos( icon->window, 0, pos.x, pos.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW );
 
     if (nb_displayed == 1 && show_systray) do_show_systray();
-    if (enable_taskbar) InvalidateRect( tray_window, NULL, FALSE );
+    if (enable_taskbar) InvalidateRect( tray_window, NULL, TRUE );
     TRACE( "added %u now %d icons\n", icon->id, nb_displayed );
 }
 
@@ -643,7 +643,7 @@ static void systray_remove_icon( struct icon *icon )
     }
 
     if (!--nb_displayed && !enable_taskbar) do_hide_systray();
-    if (enable_taskbar) InvalidateRect( tray_window, NULL, FALSE );
+    if (enable_taskbar) InvalidateRect( tray_window, NULL, TRUE );
     TRACE( "removed %u now %d icons\n", icon->id, nb_displayed );
 
     icon->display = ICON_DISPLAY_HIDDEN;

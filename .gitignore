@@ -1,2 +1,21 @@
 build/
 install/
+prefix/
+wine-staging/
+.claude/
+
+# Build artifacts
+autom4te.cache/
+configure~
+include/config.h.in~
+
+# Generated files
+configure
+include/wine/server_protocol.h
+
+# Binaries and compiled output
+*.exe
+*.so
+*.dll
+*.a
+*.o
