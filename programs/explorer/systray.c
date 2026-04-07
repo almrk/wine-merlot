@@ -115,7 +115,7 @@ static BOOL enable_dock; /* allow systray icons to be docked in the host systray
 static BOOL no_tray_items; /* hide the systray and all systray icons */
 
 static int icon_cx, icon_cy, tray_width, tray_height;
-static int start_button_width, taskbar_button_width;
+static int start_button_width, taskbar_button_width, clock_width;
 static WCHAR start_label[50];
 
 static struct icon *balloon_icon;
@@ -127,6 +127,7 @@ static POINT balloon_pos;
 
 #define BALLOON_CREATE_TIMER 1
 #define BALLOON_SHOW_TIMER   2
+#define CLOCK_TIMER          3
 
 #define BALLOON_CREATE_TIMEOUT   2000
 #define BALLOON_SHOW_MIN_TIMEOUT 10000
@@ -146,7 +147,7 @@ static WNDCLASSEXW shell_traywnd_class =
     .cbSize = sizeof(WNDCLASSEXW),
     .style = CS_DBLCLKS | CS_HREDRAW,
     .lpfnWndProc = shell_traywnd_proc,
-    .hbrBackground = (HBRUSH)COLOR_WINDOW,
+    .hbrBackground = (HBRUSH)(COLOR_3DFACE + 1),
     .lpszClassName = L"Shell_TrayWnd",
 };
 static WNDCLASSEXW tray_icon_class =
@@ -342,7 +343,7 @@ static POINT get_icon_pos( struct icon *icon )
 
     if (enable_taskbar)
     {
-        pos.x = tray_width - icon_cx * (icon->display + 1);
+        pos.x = tray_width - clock_width - icon_cx * (icon->display + 1);
         pos.y = (tray_height - icon_cy) / 2;
     }
     else
@@ -601,6 +602,7 @@ static void systray_add_icon( struct icon *icon )
     SetWindowPos( icon->window, 0, pos.x, pos.y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOZORDER | SWP_SHOWWINDOW );
 
     if (nb_displayed == 1 && show_systray) do_show_systray();
+    InvalidateRect( tray_window, NULL, FALSE );
     TRACE( "added %u now %d icons\n", icon->id, nb_displayed );
 }
 
@@ -624,6 +626,7 @@ static void systray_remove_icon( struct icon *icon )
     }
 
     if (!--nb_displayed && !enable_taskbar) do_hide_systray();
+    InvalidateRect( tray_window, NULL, FALSE );
     TRACE( "removed %u now %d icons\n", icon->id, nb_displayed );
 
     icon->display = ICON_DISPLAY_HIDDEN;
@@ -805,7 +808,7 @@ static void sync_taskbar_buttons(void)
     struct taskbar_button *win;
     int pos = 0, count = 0;
     int width = taskbar_button_width;
-    int right = tray_width - nb_displayed * icon_cx;
+    int right = tray_width - nb_displayed * icon_cx - clock_width;
     HWND foreground = GetAncestor( GetForegroundWindow(), GA_ROOTOWNER );
 
     if (!enable_taskbar) return;
@@ -815,7 +818,7 @@ static void sync_taskbar_buttons(void)
     {
         if (!win->hwnd)  /* start button */
         {
-            SetWindowPos( win->button, 0, pos, 0, start_button_width, tray_height,
+            SetWindowPos( win->button, 0, pos, 4, start_button_width, tray_height - 6,
                           SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW );
             pos += start_button_width;
             continue;
@@ -834,7 +837,7 @@ static void sync_taskbar_buttons(void)
         if (!win->hwnd) continue;  /* start button */
         if (win->visible && right - pos >= width)
         {
-            SetWindowPos( win->button, 0, pos, 0, width, tray_height,
+            SetWindowPos( win->button, 0, pos, 4, width, tray_height - 6,
                           SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW );
             InvalidateRect( win->button, NULL, TRUE );
             pos += width;
@@ -996,11 +999,10 @@ static void paint_taskbar_button( const DRAWITEMSTRUCT *dis )
     if (!win) return;
     GetClientRect( dis->hwndItem, &rect );
     DrawFrameControl( dis->hDC, &rect, DFC_BUTTON, DFCS_BUTTONPUSH | DFCS_ADJUSTRECT |
-                      ((dis->itemState & ODS_SELECTED) ? DFCS_PUSHED : 0 ));
+                      (((win->hwnd && win->active) || (dis->itemState & ODS_SELECTED)) ? DFCS_PUSHED : 0 ));
     if (win->hwnd)
     {
-        flags |= win->active ? DC_ACTIVE : DC_INBUTTON;
-        DrawCaptionTempW( win->hwnd, dis->hDC, &rect, 0, 0, NULL, flags );
+        DrawCaptionTempW( win->hwnd, dis->hDC, &rect, 0, 0, NULL, flags | DC_INBUTTON );
     }
     else  /* start button */
         DrawCaptionTempW( 0, dis->hDC, &rect, 0, 0, start_label, flags | DC_INBUTTON | DC_ICON );
@@ -1013,7 +1015,9 @@ static void click_taskbar_button( HWND button )
 
     if (!hwnd)  /* start button */
     {
+        SendMessageW( button, BM_SETSTATE, TRUE, 0 );
         do_startmenu( tray_window );
+        SendMessageW( button, BM_SETSTATE, FALSE, 0 );
         return;
     }
 
@@ -1086,14 +1090,27 @@ static void do_show_systray(void)
     /* add some margins (FIXME) */
     size.cx += 12 + GetSystemMetrics( SM_CXSMICON );
     size.cy += 4;
+    start_button_width = size.cx;
+
+    /* calculate clock width using a representative time string */
+    {
+        WCHAR time_str[32];
+        SYSTEMTIME st = { 0 };
+        st.wHour = 12; st.wMinute = 0;
+        GetTimeFormatW( LOCALE_USER_DEFAULT, TIME_NOSECONDS, &st, NULL, time_str, ARRAY_SIZE(time_str) );
+        SelectObject( hdc, GetStockObject( DEFAULT_GUI_FONT ) );
+        GetTextExtentPointW( hdc, time_str, lstrlenW(time_str), &size );
+        clock_width = size.cx + 8;
+    }
+
     ReleaseDC( 0, hdc );
     DeleteObject( font );
 
     tray_width = GetSystemMetrics( SM_CXSCREEN );
-    tray_height = max( icon_cy, size.cy );
-    start_button_width = size.cx;
+    tray_height = max( 28, icon_cy );
     SetWindowPos( tray_window, 0, 0, GetSystemMetrics( SM_CYSCREEN ) - tray_height,
                   tray_width, tray_height, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW );
+    SetTimer( tray_window, CLOCK_TIMER, 1000, NULL );
     sync_taskbar_buttons();
 }
 
@@ -1101,6 +1118,40 @@ static LRESULT WINAPI shell_traywnd_proc( HWND hwnd, UINT msg, WPARAM wparam, LP
 {
     switch (msg)
     {
+    case WM_PAINT:
+    {
+        PAINTSTRUCT ps;
+        RECT rect;
+        HDC hdc = BeginPaint( hwnd, &ps );
+        GetClientRect( hwnd, &rect );
+        DrawEdge( hdc, &rect, EDGE_RAISED, BF_TOP );
+        if (enable_taskbar)
+        {
+            RECT tray_rect, clock_rect;
+            WCHAR time_str[32];
+            SYSTEMTIME st;
+
+            tray_rect.right  = tray_width - 2;
+            tray_rect.left   = tray_width - nb_displayed * icon_cx - clock_width - 4;
+            tray_rect.top    = 4;
+            tray_rect.bottom = tray_height - 2;
+            DrawEdge( hdc, &tray_rect, EDGE_SUNKEN, BF_RECT );
+
+            GetLocalTime( &st );
+            GetTimeFormatW( LOCALE_USER_DEFAULT, TIME_NOSECONDS, &st, NULL, time_str, ARRAY_SIZE(time_str) );
+            clock_rect.right  = tray_width - 4;
+            clock_rect.left   = tray_width - clock_width - 2;
+            clock_rect.top    = 6;
+            clock_rect.bottom = tray_height - 4;
+            FillRect( hdc, &clock_rect, (HBRUSH)(COLOR_3DFACE + 1) );
+            SetBkMode( hdc, TRANSPARENT );
+            SelectObject( hdc, GetStockObject( DEFAULT_GUI_FONT ) );
+            DrawTextW( hdc, time_str, -1, &clock_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE );
+        }
+        EndPaint( hwnd, &ps );
+        break;
+    }
+
     case WM_COPYDATA:
         return handle_incoming((HWND)wparam, (COPYDATASTRUCT *)lparam);
 
@@ -1131,6 +1182,18 @@ static LRESULT WINAPI shell_traywnd_proc( HWND hwnd, UINT msg, WPARAM wparam, LP
         hide_balloon( balloon_icon );
         show_systray = FALSE;
         return 0;
+
+    case WM_TIMER:
+        if (wparam == CLOCK_TIMER)
+        {
+            RECT clock_rect;
+            clock_rect.right  = tray_width - 2;
+            clock_rect.left   = tray_width - clock_width - 2;
+            clock_rect.top    = 2;
+            clock_rect.bottom = tray_height - 2;
+            InvalidateRect( hwnd, &clock_rect, FALSE );
+        }
+        break;
 
     case WM_DRAWITEM:
         paint_taskbar_button( (const DRAWITEMSTRUCT *)lparam );

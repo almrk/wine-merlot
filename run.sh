@@ -7,11 +7,11 @@ if [ "$(basename $(pwd))" != "wine" ]; then
 fi
 
 # Start Xephyr and give it some time to start
-Xephyr -br -ac -noreset -screen 1920x1080 :1 &
+Xephyr -br -ac -noreset -screen 1024x768 -resizeable :1 &
 sleep 1
 
 # Set the program to be displayed
-DISPLAY=:1 "install/bin/wine" explorer /desktop=shell,1920x1080 &
+DISPLAY=:1 "install/bin/wine" explorer /desktop=shell,1024x768 &
 
 # Wait for return key to be pressed
 read -p "Press any key to kill..."
