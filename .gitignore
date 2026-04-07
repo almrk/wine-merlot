@@ -9,9 +9,6 @@ autom4te.cache/
 configure~
 include/config.h.in~
 
-# Generated files
-include/wine/server_protocol.h
-
 # Binaries and compiled output
 *.exe
 *.so
