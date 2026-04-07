@@ -10,7 +10,6 @@ configure~
 include/config.h.in~
 
 # Generated files
-configure
 include/wine/server_protocol.h
 
 # Binaries and compiled output
