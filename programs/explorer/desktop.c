@@ -837,6 +837,10 @@ static LRESULT WINAPI desktop_wnd_proc( HWND hwnd, UINT message, WPARAM wp, LPAR
         }
         return 0;
 
+    case WM_RBUTTONUP:
+        ShellExecuteW( NULL, L"open", L"control.exe", L"desk.cpl", NULL, SW_SHOWNORMAL );
+        return 0;
+
     case WM_PAINT:
         {
             PAINTSTRUCT ps;

@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Ensure that this is being run from the project root
-if [ "$(basename $(pwd))" != "wine" ]; then
+if [ "$(basename $(pwd))" != "wine-merlot" ]; then
     echo "Please run this script in the project root"
     exit 1
 fi

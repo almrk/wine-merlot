@@ -561,6 +561,7 @@ static void update_window_size(explorer_info *info, int height, int width)
 
 static void do_exit(int code)
 {
+    cleanup_startmenu();
     OleUninitialize();
     ExitProcess(code);
 }
